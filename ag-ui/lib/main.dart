@@ -1,5 +1,5 @@
 import 'package:agui/app_state.dart';
-import 'package:agui/home_page.dart';
+import 'package:agui/screens/home_page.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 

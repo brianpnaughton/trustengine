@@ -1,4 +1,4 @@
-import 'package:agui/chat_panel.dart';
+import 'package:agui/widgets/chat_panel.dart';
 import 'package:flutter/material.dart';
 
 class HomePage extends StatefulWidget {

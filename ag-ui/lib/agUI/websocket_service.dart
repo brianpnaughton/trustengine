@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'package:agui/models.dart';
+import 'package:agui/agUI/models.dart';
 import 'package:socket_io_client/socket_io_client.dart' as IO;
 
 class WebSocketService {

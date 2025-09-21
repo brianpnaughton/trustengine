@@ -1,5 +1,5 @@
-import 'package:agui/socket_provider.dart';
-import 'package:agui/websocket_service.dart';
+import 'package:agui/agUI/socket_provider.dart';
+import 'package:agui/agUI/websocket_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 

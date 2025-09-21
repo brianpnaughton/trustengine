@@ -1,7 +1,7 @@
 import 'dart:async';
 
-import 'package:agui/models.dart' as models;
-import 'package:agui/websocket_service.dart';
+import 'package:agui/agUI/models.dart' as models;
+import 'package:agui/agUI/websocket_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_ai_toolkit/flutter_ai_toolkit.dart';

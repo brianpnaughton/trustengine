@@ -3,3 +3,4 @@ aiohttp_cors
 python-socketio
 ag-ui-protocol
 google-adk
+litellm

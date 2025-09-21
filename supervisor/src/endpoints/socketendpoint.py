@@ -11,7 +11,7 @@ from ag_ui.core import (
     UserMessage
 )
 
-from agent.agent import ADKAgent
+from supervisor.src.middleware.adk import ADKAgent
 from google.adk.agents import Agent
 from google.genai import types
 

@@ -30,37 +30,19 @@ class WebSocketService {
       try {
         // Handle the raw JSON data and create appropriate events
         if (data is Map<String, dynamic>) {
-          Event? event;
-
-          switch (data['type']) {
-            case 'TEXT_MESSAGE_START':
-              event = TextMessageStartEvent(
-                messageId: data['messageId'] ?? '',
-                role: Role.assistant,
-              );
-              break;
-            case 'TEXT_MESSAGE_CONTENT':
-              event = TextMessageContentEvent(
-                messageId: data['messageId'] ?? '',
-                delta: data['delta'] ?? '',
-              );
-              break;
-            case 'TEXT_MESSAGE_END':
-              event = TextMessageEndEvent(messageId: data['messageId'] ?? '');
-              break;
-            default:
-              // Try to parse using the original method for other events
-              event = Event.fromJson(data);
-          }
-
-          if (event != null) {
-            print('Created event: ${event.runtimeType}');
-            _eventController.add(event);
-          }
+          // Use the proper Event.fromJson method which handles all event types
+          Event event = Event.fromJson(data);
+          print('Created event: ${event.runtimeType}');
+          _eventController.add(event);
         }
       } catch (e) {
         print('Error parsing event: $e');
         print('Event data was: $data');
+        // Fallback: try manual parsing for debugging
+        if (data is Map<String, dynamic>) {
+          print('Event type: ${data['type']}');
+          print('Available fields: ${data.keys.toList()}');
+        }
       }
     });
   }

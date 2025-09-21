@@ -39,6 +39,11 @@ class SocketProvider with ChangeNotifier implements LlmProvider {
       attachments: attachments?.toList() ?? [],
     );
     _history.add(userMessage);
+
+    // Create empty LLM message for streaming
+    final llmMessage = ChatMessage.llm();
+    _history.add(llmMessage);
+
     SchedulerBinding.instance.addPostFrameCallback((_) {
       notifyListeners();
     });
@@ -49,8 +54,6 @@ class SocketProvider with ChangeNotifier implements LlmProvider {
       value: models.UserMessage(id: messageId, content: prompt).toJson(),
     );
 
-    String assistantResponse = '';
-
     // Listen for events from the WebSocket service.
     final subscription = webSocketService.events.listen(
       (event) {
@@ -58,26 +61,18 @@ class SocketProvider with ChangeNotifier implements LlmProvider {
         if (event is models.TextMessageStartEvent) {
           // Backend started sending response
           print('Starting message response');
-          assistantResponse = '';
         } else if (event is models.TextMessageContentEvent) {
           // The backend is sending a content delta.
           print('Received content delta: ${event.delta}');
-          assistantResponse += event.delta;
+          // Append delta to the LLM message in history
+          llmMessage.append(event.delta);
+          // Yield the delta for the stream
           controller.add(event.delta);
+          // Notify listeners so UI updates with the new text
+          notifyListeners();
         } else if (event is models.TextMessageEndEvent) {
           // The backend has finished sending the response.
-          print('Ending message response. Full response: $assistantResponse');
-          // Add assistant message to history
-          final assistantMessage = ChatMessage(
-            origin: MessageOrigin.llm,
-            text: assistantResponse,
-            attachments: [],
-          );
-          _history.add(assistantMessage);
-          SchedulerBinding.instance.addPostFrameCallback((_) {
-            notifyListeners();
-          });
-
+          print('Ending message response. Full response: ${llmMessage.text}');
           responseCompleter.complete();
         }
       },

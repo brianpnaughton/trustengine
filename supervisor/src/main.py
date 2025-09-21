@@ -49,19 +49,9 @@ async def init():
 if __name__ == "__main__":
     logger.info("starting agent...")
     
-    # Create a simple ADK agent for demonstration
-    from google.adk.agents import Agent
+    from agent.base_agent import basic_agent
     from middleware.adk import ADKAgent
-    from google.adk.models.lite_llm import LiteLlm
 
-    # Create a basic agent - you can customize this based on your needs
-    # This is a simple example agent that can respond to messages
-    basic_agent = Agent(
-        name="ChatAgent",
-        model=LiteLlm(model="ollama_chat/gemma3:1b"),
-        instruction="You are a helpful assistant that responds to user messages. Be concise and helpful.",
-    )
-    
     # Wrap it in your ADK middleware
     adk_agent = ADKAgent(
         adk_agent=basic_agent,

@@ -12,82 +12,10 @@ SPANNER_DATABASE = 'networktopology-db'
 
 logger = logging.getLogger(__name__)
 
-# Connect to Spanner database
-def spanner_connect():
-  credentials = get_credentials()
-  logger.debug(credentials)
-  spanner_client = spanner.Client(credentials=credentials)
-  instance = spanner_client.instance(SPANNER_INSTANCE)
-  database = instance.database(SPANNER_DATABASE)
-  return database
-
-database = spanner_connect()
-
 ############################################################
 # Topology tools
 ############################################################
 
-@globals.networkagent_mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
-def get_parent_network_service(name: Annotated[str,"the name of the ComputeInstance"]) -> Dict:
-    """
-    Find the network service kind for the given ComputeInstance. 
-    Args:
-        name: the name of the ComputeInstance
-
-    Returns:
-        Dict: Network Service description with kind, configuration and status
-    """
-    logger.info(f"find parent kind for {name}")
-
-    # Build GQL query to get detailed information about the node and related resources
-    gql_query = f"""
-                GRAPH {GRAPH_NAME}
-                MATCH (node:NetworkNode {{name: \'{name}\', kind: \'ComputeInstance\'}})
-                OPTIONAL MATCH (node) <-[:Manages]- (parent_node:NetworkNode)
-                RETURN 
-                    parent_node.name AS node_name, 
-                    parent_node.kind AS node_kind
-            """
-    logger.info("Executing GQL query: %s", gql_query)
-
-    parent_node = {}
-    results_list = []
-    
-    try:
-        with database.snapshot() as snapshot:
-            results = snapshot.execute_sql(gql_query)
-            logger.info("Query executed successfully")
-            
-            for row in results:
-                logger.info("Found node details: %s", row)
-                # Check if parent_node data exists (not NULL)
-                if row[0] is not None and row[1] is not None:
-                    results_list.append({
-                        'name': row[0],  # Fixed: row[0] is parent_node.name
-                        'kind': row[1],  # Fixed: row[1] is parent_node.kind
-                    })
-            
-            # Validate that we have exactly one result as expected
-            if len(results_list) == 0:
-                logger.info("No parent found for node %s", name)
-                return {}
-            elif len(results_list) == 1:
-                parent_node = results_list[0]
-                logger.info("Retrieved parent for node %s: %s", name, parent_node)
-                return parent_node
-            else:
-                logger.warning("Multiple parents found for node %s (expected exactly one): %d results", name, len(results_list))
-                # Return the first parent but log the issue
-                parent_node = results_list[0]
-                logger.warning("Returning first parent: %s", parent_node)
-                return parent_node
-                
-    except Exception as e:
-        logger.error("SQL error in get_parent_network_service: {}".format(e))
-        return {}
-
-    logger.info("No parent found for node %s", name)
-    return {}
 
 @globals.networkagent_mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
 def get_node_details(

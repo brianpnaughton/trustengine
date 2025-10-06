@@ -16,11 +16,9 @@ else:
 logger.info("Base directory is %s", constants.basedir)
 
 def import_modules():
-    """Fallback to legacy immediate import mode"""
-    logger.info("Using legacy startup mode - importing all modules immediately")
-    
+    logger.info("importing all modules immediately")
+  
     import dockernetwork.lifecycle
-    # import graph.lifecycle
 
 @kopf.on.startup()
 async def configure(settings: kopf.OperatorSettings, **_):    

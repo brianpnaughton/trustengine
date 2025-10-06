@@ -1,8 +1,0 @@
-- hosts: all
-  become: True
-  gather_facts: True
-  tasks:
-
-    - name: test
-      debug:
-        msg: "hello world"

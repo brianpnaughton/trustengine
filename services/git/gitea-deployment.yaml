@@ -1,0 +1,314 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gitea
+  labels:
+    app: gitea
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: gitea-secret
+  namespace: gitea
+type: Opaque
+data:
+  # Default credentials (change in production)
+  # admin / admin123
+  admin-username: YWRtaW4=
+  admin-password: YWRtaW4xMjM=
+  # Database credentials
+  db-password: Z2l0ZWFwYXNz
+  # JWT secret (base64 encoded random string)
+  jwt-secret: WW91clNlY3JldEtleUZvckdpdGVhSldU
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gitea-config
+  namespace: gitea
+data:
+  app.ini: |
+    APP_NAME = Gitea: Git with a cup of tea
+    RUN_MODE = prod
+    RUN_USER = git
+    
+    [security]
+    INSTALL_LOCK   = true
+    SECRET_KEY     = yoursecretkey
+    INTERNAL_TOKEN = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9
+    
+    [database]
+    DB_TYPE  = postgres
+    HOST     = gitea-postgres:5432
+    NAME     = gitea
+    USER     = gitea
+    PASSWD   = giteapass
+    SSL_MODE = disable
+    CHARSET  = utf8
+    
+    [repository]
+    ROOT = /data/git/repositories
+    
+    [server]
+    PROTOCOL         = http
+    DOMAIN           = gitea.local
+    HTTP_PORT        = 3000
+    ROOT_URL         = http://gitea.local:3000/
+    DISABLE_SSH      = false
+    SSH_PORT         = 22
+    SSH_LISTEN_PORT  = 22
+    LFS_START_SERVER = true
+    
+    [mailer]
+    ENABLED = false
+    
+    [service]
+    REGISTER_EMAIL_CONFIRM            = false
+    ENABLE_NOTIFY_MAIL                = false
+    DISABLE_REGISTRATION              = false
+    ALLOW_ONLY_EXTERNAL_REGISTRATION  = false
+    ENABLE_CAPTCHA                    = false
+    REQUIRE_SIGNIN_VIEW               = false
+    DEFAULT_KEEP_EMAIL_PRIVATE        = false
+    DEFAULT_ALLOW_CREATE_ORGANIZATION = true
+    DEFAULT_ENABLE_TIMETRACKING       = true
+    NO_REPLY_ADDRESS                  = noreply.example.org
+    
+    [picture]
+    DISABLE_GRAVATAR        = false
+    ENABLE_FEDERATED_AVATAR = true
+    
+    [openid]
+    ENABLE_OPENID_SIGNIN = true
+    ENABLE_OPENID_SIGNUP = true
+    
+    [session]
+    PROVIDER = file
+    
+    [log]
+    MODE      = file
+    LEVEL     = info
+    ROOT_PATH = /data/gitea/log
+    
+    [oauth2]
+    JWT_SECRET = yoursecretjwtkey
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: gitea-data-pvc
+  namespace: gitea
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: standard
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: gitea-postgres-pvc
+  namespace: gitea
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: standard
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gitea-postgres
+  namespace: gitea
+  labels:
+    app: gitea-postgres
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gitea-postgres
+  template:
+    metadata:
+      labels:
+        app: gitea-postgres
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:13
+        env:
+        - name: POSTGRES_DB
+          value: gitea
+        - name: POSTGRES_USER
+          value: gitea
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: gitea-secret
+              key: db-password
+        ports:
+        - containerPort: 5432
+        volumeMounts:
+        - name: postgres-storage
+          mountPath: /var/lib/postgresql/data
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+      volumes:
+      - name: postgres-storage
+        persistentVolumeClaim:
+          claimName: gitea-postgres-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gitea-postgres
+  namespace: gitea
+  labels:
+    app: gitea-postgres
+spec:
+  ports:
+  - port: 5432
+    targetPort: 5432
+  selector:
+    app: gitea-postgres
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gitea
+  namespace: gitea
+  labels:
+    app: gitea
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gitea
+  template:
+    metadata:
+      labels:
+        app: gitea
+    spec:
+      securityContext:
+        fsGroup: 1000
+      initContainers:
+      - name: init-gitea
+        image: gitea/gitea:1.21
+        command: ['sh', '-c']
+        args:
+          - |
+            mkdir -p /data/gitea/conf
+            mkdir -p /data/git/repositories
+            mkdir -p /data/gitea/log
+            chown -R 1000:1000 /data
+        volumeMounts:
+        - name: gitea-storage
+          mountPath: /data
+        securityContext:
+          runAsUser: 0
+      containers:
+      - name: gitea
+        image: gitea/gitea:1.21
+        ports:
+        - containerPort: 3000
+          name: http
+        - containerPort: 22
+          name: ssh
+        env:
+        - name: USER_UID
+          value: "1000"
+        - name: USER_GID
+          value: "1000"
+        - name: GITEA__database__DB_TYPE
+          value: postgres
+        - name: GITEA__database__HOST
+          value: gitea-postgres:5432
+        - name: GITEA__database__NAME
+          value: gitea
+        - name: GITEA__database__USER
+          value: gitea
+        - name: GITEA__database__PASSWD
+          valueFrom:
+            secretKeyRef:
+              name: gitea-secret
+              key: db-password
+        volumeMounts:
+        - name: gitea-storage
+          mountPath: /data
+        - name: gitea-config
+          mountPath: /data/gitea/conf/app.ini
+          subPath: app.ini
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+        livenessProbe:
+          httpGet:
+            path: /api/healthz
+            port: 3000
+          initialDelaySeconds: 60
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /api/healthz
+            port: 3000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+      volumes:
+      - name: gitea-storage
+        persistentVolumeClaim:
+          claimName: gitea-data-pvc
+      - name: gitea-config
+        configMap:
+          name: gitea-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gitea
+  namespace: gitea
+  labels:
+    app: gitea
+spec:
+  type: ClusterIP
+  ports:
+  - port: 3000
+    targetPort: 3000
+    name: http
+  - port: 22
+    targetPort: 22
+    name: ssh
+  selector:
+    app: gitea
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gitea-nodeport
+  namespace: gitea
+  labels:
+    app: gitea
+spec:
+  type: NodePort
+  ports:
+  - port: 3000
+    targetPort: 3000
+    nodePort: 30300
+    name: http
+  - port: 22
+    targetPort: 22
+    nodePort: 30022
+    name: ssh
+  selector:
+    app: gitea

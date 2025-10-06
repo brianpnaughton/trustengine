@@ -1,0 +1,39 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: networkoperator-rolebinding-cluster
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+  - kind: ServiceAccount
+    name: networkoperator-account
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: networkoperator
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      application: networkoperator
+  template:
+    metadata:
+      labels:
+        application: networkoperator
+    spec:
+      serviceAccountName: networkoperator-account
+      containers:
+      - name: networkoperator
+        image: networkoperator:latest
+        imagePullPolicy: Always
+        env:
+        - name: BASEDIR
+          value: "/operator"
+

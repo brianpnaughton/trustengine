@@ -1,0 +1,98 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: knowledgedb-secret
+  labels:
+    app: knowledgedb
+data:
+  POSTGRES_DB: graphdb
+  POSTGRES_USER: admin
+  POSTGRES_PASSWORD: pass123
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: knowledgedb-volume
+  labels:
+    type: local
+    app: knowledgedb
+spec:
+  storageClassName: database
+  capacity:
+    storage: 10Gi
+  persistentVolumeReclaimPolicy: Retain
+  accessModes:
+    - ReadWriteMany
+  hostPath:
+    path: /storage
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: knowledgedb-volume-claim
+  labels:
+    app: knowledgedb
+spec:
+  volumeName: knowledgedb-volume
+  storageClassName: database
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: knowledgedb
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: knowledgedb
+  template:
+    metadata:
+      labels:
+        app: knowledgedb
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - knowledgedb
+      containers:
+        - name: knowledgedb
+          image: "localhost:5001/knowledgedb:latest"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 5432
+          envFrom:
+            - configMapRef:
+                name: knowledgedb-secret
+          volumeMounts:
+            - mountPath: /var/lib/postgresql/data
+              name: knowledgedb
+      volumes:
+        - name: knowledgedb
+          persistentVolumeClaim:
+            claimName: knowledgedb-volume-claim
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: knowledgedb
+  labels:
+    app: knowledgedb
+spec:
+  type: NodePort
+  ports:
+    - protocol: TCP
+      port: 5432
+      targetPort: 5432
+      nodePort: 30003
+  selector:
+    app: knowledgedb

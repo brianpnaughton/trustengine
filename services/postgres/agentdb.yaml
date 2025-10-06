@@ -1,0 +1,98 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agentdb-secret
+  labels:
+    app: agentdb
+data:
+  POSTGRES_DB: agentdb
+  POSTGRES_USER: admin
+  POSTGRES_PASSWORD: pass123
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: agentdb-volume
+  labels:
+    type: local
+    app: agentdb
+spec:
+  storageClassName: database
+  capacity:
+    storage: 10Gi
+  persistentVolumeReclaimPolicy: Retain
+  accessModes:
+    - ReadWriteMany
+  hostPath:
+    path: /data
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: agentdb-volume-claim
+  labels:
+    app: agentdb
+spec:
+  volumeName: agentdb-volume
+  storageClassName: database
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agentdb
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agentdb
+  template:
+    metadata:
+      labels:
+        app: agentdb
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - agentdb
+      containers:
+        - name: agentdb
+          image: "localhost:5001/postgres:latest"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 5432
+          envFrom:
+            - configMapRef:
+                name: agentdb-secret
+          volumeMounts:
+            - mountPath: /var/lib/postgresql/data
+              name: agentdb
+      volumes:
+        - name: agentdb
+          persistentVolumeClaim:
+            claimName: agentdb-volume-claim
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agentdb
+  labels:
+    app: agentdb
+spec:
+  type: NodePort
+  ports:
+    - protocol: TCP
+      port: 5432
+      targetPort: 5432
+      nodePort: 30020
+  selector:
+    app: agentdb

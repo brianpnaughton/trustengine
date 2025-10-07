@@ -6,31 +6,32 @@
 set -e  # Exit on any error
 
 # Configuration
+# Data Network
 NETWORK_NAME="vyos-network"
 SUBNET="172.20.0.0/24"
 SUBNET_IPV6="fd00:172:20::/64"
+
+# Management Network
+MGMT_NETWORK_NAME="vyos-mgmt-network"
+MGMT_SUBNET="192.168.100.0/24"
+MGMT_SUBNET_IPV6="fd00:192:168:100::/64"
+
+# Container Configuration
 VYOS_IMAGE="vyos:1.5"
 CONTAINER1_NAME="vyos-router1"
 CONTAINER2_NAME="vyos-router2"
+
+# Data Network IPs
 CONTAINER1_IP="172.20.0.10"
 CONTAINER2_IP="172.20.0.20"
 CONTAINER1_IPV6="fd00:172:20::10"
 CONTAINER2_IPV6="fd00:172:20::20"
-# This script deploys 2 VyOS docker containers on the same docker network
 
-set -e  # Exit on any error
-
-# Configuration
-NETWORK_NAME="vyos-network"
-SUBNET="172.20.0.0/24"
-SUBNET_IPV6="fd00:172:20::/64"
-VYOS_IMAGE="vyos:1.5"
-CONTAINER1_NAME="vyos-router1"
-CONTAINER2_NAME="vyos-router2"
-CONTAINER1_IP="172.20.0.10"
-CONTAINER2_IP="172.20.0.20"
-CONTAINER1_IPV6="fd00:172:20::10"
-CONTAINER2_IPV6="fd00:172:20::20"
+# Management Network IPs
+CONTAINER1_MGMT_IP="192.168.100.10"
+CONTAINER2_MGMT_IP="192.168.100.20"
+CONTAINER1_MGMT_IPV6="fd00:192:168:100::10"
+CONTAINER2_MGMT_IPV6="fd00:192:168:100::20"
 
 # Colors for output
 RED='\033[0;31m'
@@ -63,22 +64,36 @@ cleanup() {
         fi
     done
     
-    # Remove network if it exists
+    # Remove data network if it exists
     if docker network ls --format "table {{.Name}}" | grep -q "^${NETWORK_NAME}$"; then
-        log_info "Removing existing network: $NETWORK_NAME"
+        log_info "Removing existing data network: $NETWORK_NAME"
         docker network rm $NETWORK_NAME >/dev/null 2>&1 || true
+    fi
+    
+    # Remove management network if it exists
+    if docker network ls --format "table {{.Name}}" | grep -q "^${MGMT_NETWORK_NAME}$"; then
+        log_info "Removing existing management network: $MGMT_NETWORK_NAME"
+        docker network rm $MGMT_NETWORK_NAME >/dev/null 2>&1 || true
     fi
 }
 
-# Function to create docker network
-create_network() {
-    log_info "Creating docker network: $NETWORK_NAME with IPv4 subnet: $SUBNET and IPv6 subnet: $SUBNET_IPV6"
+# Function to create docker networks
+create_networks() {
+    log_info "Creating data network: $NETWORK_NAME with IPv4 subnet: $SUBNET and IPv6 subnet: $SUBNET_IPV6"
     docker network create \
         --driver bridge \
         --subnet=$SUBNET \
         --ipv6 \
         --subnet=$SUBNET_IPV6 \
         $NETWORK_NAME
+    
+    log_info "Creating management network: $MGMT_NETWORK_NAME with IPv4 subnet: $MGMT_SUBNET and IPv6 subnet: $MGMT_SUBNET_IPV6"
+    docker network create \
+        --driver bridge \
+        --subnet=$MGMT_SUBNET \
+        --ipv6 \
+        --subnet=$MGMT_SUBNET_IPV6 \
+        $MGMT_NETWORK_NAME
 }
 
 # Function to wait for containers to be ready
@@ -112,21 +127,39 @@ deploy_vyos_container() {
     local container_name=$1
     local ip_address=$2
     local ipv6_address=$3
+    local mgmt_ip_address=$4
+    local mgmt_ipv6_address=$5
     
-    log_info "Deploying VyOS container: $container_name with IPv4: $ip_address and IPv6: $ipv6_address"
+    log_info "Deploying VyOS container: $container_name"
+    log_info "  Data network - IPv4: $ip_address, IPv6: $ipv6_address"
+    log_info "  Mgmt network - IPv4: $mgmt_ip_address, IPv6: $mgmt_ipv6_address"
     
+    # Create container connected to data network first
     docker run -d \
         --name $container_name \
+        --hostname $container_name \
         --network $NETWORK_NAME \
         --ip $ip_address \
         --ip6 $ipv6_address \
         --privileged \
         --cap-add=NET_ADMIN \
+        -v /lib/modules:/lib/modules:ro \
         --sysctl net.ipv4.ip_forward=1 \
         --sysctl net.ipv6.conf.all.forwarding=1 \
         --sysctl net.ipv6.conf.default.forwarding=1 \
         $VYOS_IMAGE \
         /sbin/init
+    
+    # Wait a moment for container to start
+    sleep 2
+    
+    # Connect to management network
+    log_info "Connecting $container_name to management network"
+    docker network connect \
+        --ip $mgmt_ip_address \
+        --ip6 $mgmt_ipv6_address \
+        $MGMT_NETWORK_NAME \
+        $container_name
 }
 
 # Function to wait for VyOS containers to be ready
@@ -160,23 +193,64 @@ configure_vyos() {
     
     log_info "Configuring VyOS router: $container_name"
     
-    # Wait for container to be ready
-    sleep 5
+    # Wait longer for VyOS to be fully ready
+    sleep 15
     
-    # Basic configuration
-    docker exec -it $container_name vbash -c "
-        source /opt/vyatta/etc/functions/script-template
-        configure
-        set system host-name $container_name
-        set system domain-name lab.local
-        set interfaces ethernet eth0 description 'Management Interface'
-        set interfaces ethernet eth0 address dhcp
-        set service ssh port 22
-        set service ssh disable-password-authentication
-        commit
-        save
-        exit
+    # Fix hostname resolution at the system level for VyOS
+    docker exec $container_name sh -c "
+        # Ensure the hostname is properly resolved for sudo
+        hostname=\$(hostname)
+        if ! grep -q \"127.0.0.1.*\$hostname\" /etc/hosts; then
+            echo \"127.0.0.1 \$hostname\" >> /etc/hosts
+        fi
+        # Also add it with FQDN
+        if ! grep -q \"127.0.0.1.*\$hostname.lab.local\" /etc/hosts; then
+            echo \"127.0.0.1 \$hostname.lab.local \$hostname\" >> /etc/hosts
+        fi
     "
+    
+    # Wait for VyOS configuration daemon to be ready
+    docker exec $container_name sh -c "
+        timeout=30
+        while [ \$timeout -gt 0 ]; do
+            if pgrep -f 'vyos-configd' > /dev/null 2>&1; then
+                break
+            fi
+            sleep 1
+            timeout=\$((timeout - 1))
+        done
+        sleep 3
+    "
+    
+    # Basic configuration with retry logic
+    max_retries=3
+    retry=0
+    while [ $retry -lt $max_retries ]; do
+        if docker exec $container_name timeout 30 vbash -c "
+            source /opt/vyatta/etc/functions/script-template
+            configure
+            set system host-name $container_name
+            set system domain-name lab.local
+            set interfaces ethernet eth0 description 'Data Network Interface'
+            set interfaces ethernet eth1 description 'Management Interface'
+            set interfaces ethernet eth1 address dhcp
+            set service ssh port 22
+            commit
+            save
+            exit
+        " 2>/dev/null; then
+            log_info "✓ VyOS configuration successful for $container_name"
+            break
+        else
+            retry=$((retry + 1))
+            if [ $retry -lt $max_retries ]; then
+                log_warn "Configuration attempt $retry failed for $container_name, retrying..."
+                sleep 5
+            else
+                log_warn "Configuration failed for $container_name after $max_retries attempts"
+            fi
+        fi
+    done
 }
 
 # Function to show container status
@@ -188,15 +262,19 @@ show_status() {
     
     log_info "Network Information:"
     echo "===================="
-    docker network inspect $NETWORK_NAME --format='{{range .Containers}}{{.Name}}: {{.IPv4Address}}{{"\n"}}{{end}}'
+    echo "Data Network ($NETWORK_NAME):"
+    docker network inspect $NETWORK_NAME --format='{{range .Containers}}  {{.Name}}: {{.IPv4Address}}{{"\n"}}{{end}}'
+    echo ""
+    echo "Management Network ($MGMT_NETWORK_NAME):"
+    docker network inspect $MGMT_NETWORK_NAME --format='{{range .Containers}}  {{.Name}}: {{.IPv4Address}}{{"\n"}}{{end}}'
     echo ""
     
-    log_info "Container IPs:"
+    log_info "Container Network Details:"
     echo "===================="
     for container in $CONTAINER1_NAME $CONTAINER2_NAME; do
-        ipv4=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' $container 2>/dev/null || echo "N/A")
-        ipv6=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.GlobalIPv6Address}}{{end}}' $container 2>/dev/null || echo "N/A")
-        echo "$container: IPv4=$ipv4, IPv6=$ipv6"
+        echo "$container:"
+        # Get all network information for the container
+        docker inspect $container --format='{{range $net, $conf := .NetworkSettings.Networks}}  {{$net}}: IPv4={{.IPAddress}}, IPv6={{.GlobalIPv6Address}}{{"\n"}}{{end}}'
     done
 }
 
@@ -204,32 +282,67 @@ show_status() {
 test_connectivity() {
     log_info "Testing connectivity between containers..."
     
-    # Test IPv4 ping from router1 to router2
+    log_info "Data Network Connectivity Tests:"
+    echo "================================="
+    
+    # Test IPv4 ping from router1 to router2 on data network
     if docker exec $CONTAINER1_NAME ping -c 3 $CONTAINER2_IP >/dev/null 2>&1; then
-        log_info "✓ IPv4 connectivity test successful: $CONTAINER1_NAME -> $CONTAINER2_NAME"
+        log_info "✓ Data IPv4 connectivity test successful: $CONTAINER1_NAME -> $CONTAINER2_NAME"
     else
-        log_error "✗ IPv4 connectivity test failed: $CONTAINER1_NAME -> $CONTAINER2_NAME"
+        log_error "✗ Data IPv4 connectivity test failed: $CONTAINER1_NAME -> $CONTAINER2_NAME"
     fi
     
-    # Test IPv4 ping from router2 to router1
+    # Test IPv4 ping from router2 to router1 on data network
     if docker exec $CONTAINER2_NAME ping -c 3 $CONTAINER1_IP >/dev/null 2>&1; then
-        log_info "✓ IPv4 connectivity test successful: $CONTAINER2_NAME -> $CONTAINER1_NAME"
+        log_info "✓ Data IPv4 connectivity test successful: $CONTAINER2_NAME -> $CONTAINER1_NAME"
     else
-        log_error "✗ IPv4 connectivity test failed: $CONTAINER2_NAME -> $CONTAINER1_NAME"
+        log_error "✗ Data IPv4 connectivity test failed: $CONTAINER2_NAME -> $CONTAINER1_NAME"
     fi
     
-    # Test IPv6 ping from router1 to router2
+    # Test IPv6 ping from router1 to router2 on data network
     if docker exec $CONTAINER1_NAME ping6 -c 3 $CONTAINER2_IPV6 >/dev/null 2>&1; then
-        log_info "✓ IPv6 connectivity test successful: $CONTAINER1_NAME -> $CONTAINER2_NAME"
+        log_info "✓ Data IPv6 connectivity test successful: $CONTAINER1_NAME -> $CONTAINER2_NAME"
     else
-        log_error "✗ IPv6 connectivity test failed: $CONTAINER1_NAME -> $CONTAINER2_NAME"
+        log_error "✗ Data IPv6 connectivity test failed: $CONTAINER1_NAME -> $CONTAINER2_NAME"
     fi
     
-    # Test IPv6 ping from router2 to router1
+    # Test IPv6 ping from router2 to router1 on data network
     if docker exec $CONTAINER2_NAME ping6 -c 3 $CONTAINER1_IPV6 >/dev/null 2>&1; then
-        log_info "✓ IPv6 connectivity test successful: $CONTAINER2_NAME -> $CONTAINER1_NAME"
+        log_info "✓ Data IPv6 connectivity test successful: $CONTAINER2_NAME -> $CONTAINER1_NAME"
     else
-        log_error "✗ IPv6 connectivity test failed: $CONTAINER2_NAME -> $CONTAINER1_NAME"
+        log_error "✗ Data IPv6 connectivity test failed: $CONTAINER2_NAME -> $CONTAINER1_NAME"
+    fi
+    
+    echo ""
+    log_info "Management Network Connectivity Tests:"
+    echo "======================================"
+    
+    # Test IPv4 ping from router1 to router2 on management network
+    if docker exec $CONTAINER1_NAME ping -c 3 $CONTAINER2_MGMT_IP >/dev/null 2>&1; then
+        log_info "✓ Mgmt IPv4 connectivity test successful: $CONTAINER1_NAME -> $CONTAINER2_NAME"
+    else
+        log_error "✗ Mgmt IPv4 connectivity test failed: $CONTAINER1_NAME -> $CONTAINER2_NAME"
+    fi
+    
+    # Test IPv4 ping from router2 to router1 on management network
+    if docker exec $CONTAINER2_NAME ping -c 3 $CONTAINER1_MGMT_IP >/dev/null 2>&1; then
+        log_info "✓ Mgmt IPv4 connectivity test successful: $CONTAINER2_NAME -> $CONTAINER1_NAME"
+    else
+        log_error "✗ Mgmt IPv4 connectivity test failed: $CONTAINER2_NAME -> $CONTAINER1_NAME"
+    fi
+    
+    # Test IPv6 ping from router1 to router2 on management network
+    if docker exec $CONTAINER1_NAME ping6 -c 3 $CONTAINER2_MGMT_IPV6 >/dev/null 2>&1; then
+        log_info "✓ Mgmt IPv6 connectivity test successful: $CONTAINER1_NAME -> $CONTAINER2_NAME"
+    else
+        log_error "✗ Mgmt IPv6 connectivity test failed: $CONTAINER1_NAME -> $CONTAINER2_NAME"
+    fi
+    
+    # Test IPv6 ping from router2 to router1 on management network
+    if docker exec $CONTAINER2_NAME ping6 -c 3 $CONTAINER1_MGMT_IPV6 >/dev/null 2>&1; then
+        log_info "✓ Mgmt IPv6 connectivity test successful: $CONTAINER2_NAME -> $CONTAINER1_NAME"
+    else
+        log_error "✗ Mgmt IPv6 connectivity test failed: $CONTAINER2_NAME -> $CONTAINER1_NAME"
     fi
 }
 
@@ -259,18 +372,22 @@ deploy() {
     # Cleanup existing resources
     cleanup
     
-    # Create network
-    create_network
+    # Create networks
+    create_networks
   
     # Deploy containers
-    deploy_vyos_container $CONTAINER1_NAME $CONTAINER1_IP $CONTAINER1_IPV6
-    deploy_vyos_container $CONTAINER2_NAME $CONTAINER2_IP $CONTAINER2_IPV6
+    deploy_vyos_container $CONTAINER1_NAME $CONTAINER1_IP $CONTAINER1_IPV6 $CONTAINER1_MGMT_IP $CONTAINER1_MGMT_IPV6
+    deploy_vyos_container $CONTAINER2_NAME $CONTAINER2_IP $CONTAINER2_IPV6 $CONTAINER2_MGMT_IP $CONTAINER2_MGMT_IPV6
     
     # Wait for containers to be ready
     wait_for_containers
     
     # Configure routers (optional - basic config)
     configure_vyos $CONTAINER1_NAME "1"
+    
+    # Add delay between router configurations to avoid conflicts
+    sleep 5
+    
     configure_vyos $CONTAINER2_NAME "2"
     
     # Show status

@@ -7,9 +7,12 @@
 https://docs.vyos.io/en/latest/contributing/build-vyos.html
 
 ```
+cd ~
 git clone -b current --single-branch https://github.com/vyos/vyos-build
+cd vyos-build
 docker build -t vyos/vyos-build:current docker
 docker run --rm -it --privileged -v $(pwd):/vyos -w /vyos vyos/vyos-build:current bash
+sudo ./build-vyos-image --architecture amd64 --version trust generic
 ```
 
 ### Create docker image
@@ -17,9 +20,10 @@ docker run --rm -it --privileged -v $(pwd):/vyos -w /vyos vyos/vyos-build:curren
 https://docs.vyos.io/en/latest/installation/virtual/docker.html
 
 ```
+cd ~
 mkdir vyos && cd vyos
 mkdir rootfs
-sudo mount -o loop ../vyos-build/build/vyos-1.5-rolling-202510061229-generic-amd64.iso rootfs
+sudo mount -o loop ../vyos-build/build/vyos-trust-generic-amd64.iso rootfs
 sudo apt-get install -y squashfs-tools
 mkdir unsquashfs
 sudo unsquashfs -f -d unsquashfs/ rootfs/live/filesystem.squashfs

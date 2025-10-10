@@ -1,7 +1,7 @@
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
-  name: vyosnetwork.guardian.dev
+  name: vyosnetworks.guardian.dev
   labels:
     type: network
 spec:
@@ -22,5 +22,5 @@ spec:
           type: object
           description: |
             VyOS network
-          properties:
-            x-kubernetes-preserve-unknown-fields: true
+          x-kubernetes-preserve-unknown-fields: true
+          properties: {}

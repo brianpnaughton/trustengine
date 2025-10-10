@@ -1,0 +1,7 @@
+apiVersion: guardian.dev/v1
+kind: DockerNetwork
+metadata:
+  name: telco-lab-network
+spec:
+  description: "Telco Lab Network Infrastructure"
+  subnet: "10.0.0.0/24"

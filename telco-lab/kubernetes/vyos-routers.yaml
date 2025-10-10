@@ -1,0 +1,398 @@
+---
+apiVersion: guardian.dev/v1
+kind: VyOSRouter
+metadata:
+  name: core-1
+  namespace: default
+  labels:
+    type: core
+    role: p-router
+    environment: lab
+spec:
+  hostname: "core-1"
+  router_id: "10.0.0.11"
+  image: "vyos:1.5"
+  resources:
+    cpu: "2"
+    memory: "2Gi"
+  
+  interfaces:
+    - name: "eth0"
+      description: "Link to PE-1"
+      address: "10.1.1.2/30"
+      mtu: 9000
+    - name: "eth1"
+      description: "Link to Core-2 Primary"
+      address: "10.1.2.2/30"
+      mtu: 9000
+    - name: "eth2"
+      description: "Link to Core-2 Backup"
+      address: "10.1.4.1/30"
+      mtu: 9000
+    - name: "lo"
+      description: "Router ID and MPLS LSR-ID"
+      address: "10.0.0.11/32"
+  
+  protocols:
+    ospf:
+      router_id: "10.0.0.11"
+      areas:
+        - area: "0.0.0.0"
+          networks:
+            - "10.0.0.11/32"
+            - "10.1.1.0/30"
+            - "10.1.2.0/30"
+            - "10.1.4.0/30"
+    
+    bgp:
+      as_number: 65001
+      router_id: "10.0.0.11"
+      route_reflector: true
+      neighbors:
+        - peer: "10.0.0.1"
+          remote_as: 65001
+          route_reflector_client: true
+        - peer: "10.0.0.2"
+          remote_as: 65001
+          route_reflector_client: true
+        - peer: "10.0.0.12"
+          remote_as: 65001
+    
+    mpls:
+      enabled: true
+      ldp:
+        router_id: "10.0.0.11"
+        interfaces: ["eth0", "eth1", "eth2"]
+
+---
+apiVersion: guardian.dev/v1
+kind: VyOSRouter
+metadata:
+  name: core-2
+  namespace: default
+  labels:
+    type: core
+    role: p-router
+    environment: lab
+spec:
+  hostname: "core-2"
+  router_id: "10.0.0.12"
+  image: "vyos:1.5"
+  resources:
+    cpu: "2"
+    memory: "2Gi"
+  
+  interfaces:
+    - name: "eth0"
+      description: "Link to Core-1"
+      address: "10.1.2.1/30"
+      mtu: 9000
+    - name: "eth1"
+      description: "Link to PE-2"
+      address: "10.1.3.2/30"
+      mtu: 9000
+    - name: "eth2"
+      description: "Link to Core-1 Backup"
+      address: "10.1.4.2/30"
+      mtu: 9000
+    - name: "lo"
+      description: "Router ID and MPLS LSR-ID"
+      address: "10.0.0.12/32"
+  
+  protocols:
+    ospf:
+      router_id: "10.0.0.12"
+      areas:
+        - area: "0.0.0.0"
+          networks:
+            - "10.0.0.12/32"
+            - "10.1.2.0/30"
+            - "10.1.3.0/30"
+            - "10.1.4.0/30"
+    
+    bgp:
+      as_number: 65001
+      router_id: "10.0.0.12"
+      route_reflector: true
+      neighbors:
+        - peer: "10.0.0.1"
+          remote_as: 65001
+          route_reflector_client: true
+        - peer: "10.0.0.2"
+          remote_as: 65001
+          route_reflector_client: true
+        - peer: "10.0.0.11"
+          remote_as: 65001
+    
+    mpls:
+      enabled: true
+      ldp:
+        router_id: "10.0.0.12"
+        interfaces: ["eth0", "eth1", "eth2"]
+
+---
+apiVersion: guardian.dev/v1
+kind: VyOSRouter
+metadata:
+  name: pe-1
+  namespace: default
+  labels:
+    type: edge
+    role: pe-router
+    environment: lab
+spec:
+  hostname: "pe-1"
+  router_id: "10.0.0.1"
+  image: "vyos:1.5"
+  resources:
+    cpu: "2"
+    memory: "4Gi"
+  
+  interfaces:
+    - name: "eth0"
+      description: "Link to External Gateway"
+      address: "10.1.0.2/30"
+      mtu: 1500
+    - name: "eth1"
+      description: "Link to Core-1"
+      address: "10.1.1.1/30"
+      mtu: 9000
+    - name: "eth2"
+      description: "Link to AGG-1"
+      address: "10.1.10.1/30"
+      mtu: 1500
+    - name: "eth3"
+      description: "Customer A CE Interface"
+      address: "172.16.1.1/24"
+      vrf: "CUSTOMER-A"
+    - name: "eth4"
+      description: "Customer B CE Interface"
+      address: "172.17.1.1/24"
+      vrf: "CUSTOMER-B"
+    - name: "lo"
+      description: "Router ID and MPLS LSR-ID"
+      address: "10.0.0.1/32"
+  
+  vrfs:
+    - name: "CUSTOMER-A"
+      table: 100
+      rd: "65001:100"
+      rt_export: "100:100"
+      rt_import: "100:100"
+    - name: "CUSTOMER-B"
+      table: 200
+      rd: "65001:200"
+      rt_export: "200:200"
+      rt_import: "200:200"
+  
+  protocols:
+    ospf:
+      router_id: "10.0.0.1"
+      areas:
+        - area: "0.0.0.0"
+          networks:
+            - "10.0.0.1/32"
+            - "10.1.1.0/30"
+        - area: "0.0.0.1"
+          networks:
+            - "10.1.10.0/30"
+    
+    bgp:
+      as_number: 65001
+      router_id: "10.0.0.1"
+      neighbors:
+        - peer: "10.0.0.11"
+          remote_as: 65001
+        - peer: "10.0.0.12"
+          remote_as: 65001
+        - peer: "10.1.0.1"
+          remote_as: 65000
+          description: "External Gateway"
+      
+      vrfs:
+        - name: "CUSTOMER-A"
+          neighbors:
+            - peer: "172.16.1.10"
+              remote_as: 65100
+        - name: "CUSTOMER-B"
+          neighbors:
+            - peer: "172.17.1.10"
+              remote_as: 65200
+    
+    mpls:
+      enabled: true
+      ldp:
+        router_id: "10.0.0.1"
+        interfaces: ["eth1"]
+
+---
+apiVersion: guardian.dev/v1
+kind: VyOSRouter
+metadata:
+  name: pe-2
+  namespace: default
+  labels:
+    type: edge
+    role: pe-router
+    environment: lab
+spec:
+  hostname: "pe-2"
+  router_id: "10.0.0.2"
+  image: "vyos:1.5"
+  resources:
+    cpu: "2"
+    memory: "4Gi"
+  
+  interfaces:
+    - name: "eth0"
+      description: "Link to Core-2"
+      address: "10.1.3.1/30"
+      mtu: 9000
+    - name: "eth1"
+      description: "Link to AGG-2"
+      address: "10.1.20.1/30"
+      mtu: 1500
+    - name: "lo"
+      description: "Router ID and MPLS LSR-ID"
+      address: "10.0.0.2/32"
+  
+  protocols:
+    ospf:
+      router_id: "10.0.0.2"
+      areas:
+        - area: "0.0.0.0"
+          networks:
+            - "10.0.0.2/32"
+            - "10.1.3.0/30"
+        - area: "0.0.0.2"
+          networks:
+            - "10.1.20.0/30"
+    
+    bgp:
+      as_number: 65001
+      router_id: "10.0.0.2"
+      neighbors:
+        - peer: "10.0.0.11"
+          remote_as: 65001
+        - peer: "10.0.0.12"
+          remote_as: 65001
+    
+    mpls:
+      enabled: true
+      ldp:
+        router_id: "10.0.0.2"
+        interfaces: ["eth0"]
+
+---
+apiVersion: guardian.dev/v1
+kind: VyOSRouter
+metadata:
+  name: agg-1
+  namespace: default
+  labels:
+    type: access
+    role: aggregation
+    environment: lab
+spec:
+  hostname: "agg-1"
+  router_id: "10.0.0.21"
+  image: "vyos:1.5"
+  resources:
+    cpu: "1"
+    memory: "2Gi"
+  
+  interfaces:
+    - name: "eth0"
+      description: "Link to PE-1"
+      address: "10.1.10.2/30"
+      mtu: 1500
+    - name: "eth1"
+      description: "CPE Access Network"
+      address: "10.10.1.1/24"
+      mtu: 1500
+    - name: "lo"
+      description: "Router ID"
+      address: "10.0.0.21/32"
+  
+  protocols:
+    ospf:
+      router_id: "10.0.0.21"
+      areas:
+        - area: "0.0.0.1"
+          networks:
+            - "10.0.0.21/32"
+            - "10.1.10.0/30"
+            - "10.10.1.0/24"
+  
+  services:
+    dhcp:
+      - network: "10.10.1.0/24"
+        gateway: "10.10.1.1"
+        dns_servers: ["8.8.8.8", "8.8.4.4"]
+        range:
+          start: "10.10.1.10"
+          end: "10.10.1.100"
+        static_mappings:
+          - name: "cpe-1"
+            ip: "10.10.1.10"
+            mac: "00:50:56:01:01:01"
+          - name: "cpe-3"
+            ip: "10.10.1.11"
+            mac: "00:50:56:01:01:03"
+
+---
+apiVersion: guardian.dev/v1
+kind: VyOSRouter
+metadata:
+  name: agg-2
+  namespace: default
+  labels:
+    type: access
+    role: aggregation
+    environment: lab
+spec:
+  hostname: "agg-2"
+  router_id: "10.0.0.22"
+  image: "vyos:1.5"
+  resources:
+    cpu: "1"
+    memory: "2Gi"
+  
+  interfaces:
+    - name: "eth0"
+      description: "Link to PE-2"
+      address: "10.1.20.2/30"
+      mtu: 1500
+    - name: "eth1"
+      description: "CPE Access Network"
+      address: "10.10.2.1/24"
+      mtu: 1500
+    - name: "lo"
+      description: "Router ID"
+      address: "10.0.0.22/32"
+  
+  protocols:
+    ospf:
+      router_id: "10.0.0.22"
+      areas:
+        - area: "0.0.0.2"
+          networks:
+            - "10.0.0.22/32"
+            - "10.1.20.0/30"
+            - "10.10.2.0/24"
+  
+  services:
+    dhcp:
+      - network: "10.10.2.0/24"
+        gateway: "10.10.2.1"
+        dns_servers: ["8.8.8.8", "8.8.4.4"]
+        range:
+          start: "10.10.2.10"
+          end: "10.10.2.100"
+        static_mappings:
+          - name: "cpe-2"
+            ip: "10.10.2.10"
+            mac: "00:50:56:02:02:02"
+          - name: "cpe-4"
+            ip: "10.10.2.11"
+            mac: "00:50:56:02:02:04"

@@ -85,3 +85,7 @@ local.properties
 
 # macOS system files
 **/.DS_Store
+
+# Ansible artifacts
+**/playbooks/artifacts
+**/playbooks/inventory

@@ -19,6 +19,8 @@ def import_modules():
     logger.info("importing all modules immediately")
   
     import dockernetwork.lifecycle
+    import vyosnetwork.lifecycle
+    import vyos.lifecycle
 
 @kopf.on.startup()
 async def configure(settings: kopf.OperatorSettings, **_):    

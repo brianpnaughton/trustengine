@@ -1,7 +1,7 @@
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
-  name: dockernetwork.guardian.dev
+  name: dockernetworks.guardian.dev
   labels:
     type: network
 spec:
@@ -21,6 +21,6 @@ spec:
         openAPIV3Schema:
           type: object
           description: |
-            Docker network
-          properties:
-            x-kubernetes-preserve-unknown-fields: true
+            The vyos router
+          x-kubernetes-preserve-unknown-fields: true
+          properties: {}

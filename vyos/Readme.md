@@ -38,6 +38,6 @@ sudo rm -rf vyos
 ```
 docker network create --ipv6 -d macvlan -o parent=eno2 --subnet 2001:db8::/64 --subnet 192.0.2.0/24 mynet
 docker run -d --rm --name vyos --net mynet --privileged vyos:1.5 /sbin/init
-docker exec -ti vyos su - vyos
+docker exec -ti vyos vbash
 ```
 

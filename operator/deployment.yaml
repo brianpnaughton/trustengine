@@ -51,4 +51,9 @@ spec:
         env:
         - name: BASEDIR
           value: "/operator"
-
+        - name: HOST_IP_ADDRESS
+          value: "10.211.55.16"
+        - name: VM_USER
+          value: "parallels"
+        - name: VM_PASSWORD
+          value: "erin140799"

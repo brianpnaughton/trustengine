@@ -1,0 +1,166 @@
+apiVersion: guardian.dev/v1
+kind: VyOSNetwork
+metadata:
+  name: telco-lab-network
+  namespace: default
+  labels:
+    type: telco-lab
+    environment: lab
+spec:
+  description: "Telco Lab Network Infrastructure"
+  networks:
+    # Core backbone networks
+    - name: core-backbone
+      subnet: "10.1.0.0/16"
+      description: "Core network P2P links"
+      vlan: 100
+    
+    # Loopback network for router IDs
+    - name: loopbacks
+      subnet: "10.0.0.0/24"
+      description: "Router loopback addresses"
+      vlan: 101
+    
+    # Access networks
+    - name: access-agg1
+      subnet: "10.10.1.0/24"
+      description: "Access aggregation 1 CPE network"
+      vlan: 201
+    
+    - name: access-agg2
+      subnet: "10.10.2.0/24"
+      description: "Access aggregation 2 CPE network"
+      vlan: 202
+    
+    # Customer VRF networks
+    - name: customer-a
+      subnet: "172.16.0.0/16"
+      description: "Customer A VPN network"
+      vlan: 301
+      vrf: "CUSTOMER-A"
+    
+    - name: customer-b
+      subnet: "172.17.0.0/16"
+      description: "Customer B VPN network"
+      vlan: 302
+      vrf: "CUSTOMER-B"
+    
+    # Management network
+    - name: management
+      subnet: "192.168.100.0/24"
+      description: "Out-of-band management network"
+      vlan: 999
+  
+  # QoS policies
+  qos:
+    policies:
+      - name: "CORE-QOS"
+        bandwidth: "10gbit"
+        classes:
+          - name: "voice"
+            priority: 7
+            bandwidth: "30%"
+            dscp: "ef"
+          - name: "video"
+            priority: 5
+            bandwidth: "40%"
+            dscp: "af41"
+          - name: "data"
+            priority: 3
+            bandwidth: "30%"
+            dscp: "af21"
+      
+      - name: "ACCESS-QOS"
+        bandwidth: "100mbit"
+        classes:
+          - name: "voice"
+            priority: 7
+            bandwidth: "20%"
+            dscp: "ef"
+          - name: "video"
+            priority: 5
+            bandwidth: "30%"
+            dscp: "af41"
+          - name: "data"
+            priority: 3
+            bandwidth: "50%"
+            dscp: "af21"
+  
+  # MPLS configuration
+  mpls:
+    enabled: true
+    ldp:
+      router_id_interface: "loopback"
+      label_range:
+        min: 16
+        max: 1048575
+    
+    # L3VPN configuration
+    l3vpn:
+      - name: "CUSTOMER-A"
+        rd: "65001:100"
+        rt_export: "100:100"
+        rt_import: "100:100"
+        description: "Customer A L3VPN"
+      
+      - name: "CUSTOMER-B"
+        rd: "65001:200"
+        rt_export: "200:200"
+        rt_import: "200:200"
+        description: "Customer B L3VPN"
+  
+  # Routing protocols
+  routing:
+    ospf:
+      router_id_source: "loopback"
+      areas:
+        - area_id: "0.0.0.0"
+          type: "backbone"
+          description: "Core backbone area"
+        - area_id: "0.0.0.1"
+          type: "standard"
+          description: "Access area 1"
+        - area_id: "0.0.0.2"
+          type: "standard"
+          description: "Access area 2"
+    
+    bgp:
+      as_number: 65001
+      router_id_source: "loopback"
+      route_reflectors:
+        - "10.0.0.11"  # Core-1
+        - "10.0.0.12"  # Core-2
+      external_peers:
+        - peer: "10.1.0.1"
+          as_number: 65000
+          description: "External Gateway"
+  
+  # Security policies
+  security:
+    firewall:
+      policies:
+        - name: "OUTSIDE-IN"
+          default_action: "drop"
+          rules:
+            - number: 10
+              action: "accept"
+              state: ["established", "related"]
+            - number: 20
+              action: "accept"
+              protocol: "icmp"
+            - number: 30
+              action: "accept"
+              protocol: "tcp"
+              ports: [22, 179, 646]
+        
+        - name: "CPE-ACCESS"
+          default_action: "accept"
+          rules:
+            - number: 10
+              action: "drop"
+              description: "Block inter-CPE communication"
+              source: "10.10.0.0/16"
+              destination: "10.10.0.0/16"
+            - number: 20
+              action: "accept"
+              description: "Allow to gateway"

@@ -11,7 +11,7 @@ from ag_ui.core import (
     UserMessage
 )
 
-from supervisor.src.middleware.adk import ADKAgent
+from middleware.adk import ADKAgent
 from tools.agui import taskApproval
 
 logger = logging.getLogger(__name__)

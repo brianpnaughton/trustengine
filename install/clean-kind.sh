@@ -14,7 +14,7 @@ docker kill "${reg_name}" || true
 docker rm "${reg_name}" || true
 # docker system prune -f
 
-rm -rf ${CURRENT_DIR}/services/postgres/data
+sudo rm -rf ${CURRENT_DIR}/services/postgres/data
 # remove cloud-provider-kind log
 # CURRENT_DIR=$(pwd)
 # rm ${CURRENT_DIR}/cloud-provider-kind.log

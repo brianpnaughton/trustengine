@@ -18,7 +18,7 @@ async def install_docker_network():
 
     hosts = {
         'hosts': {
-            'localhost': {
+            'target': {
                 'ansible_host': os.getenv("HOST_IP_ADDRESS"),
                 'ansible_user': os.getenv("VM_USER"),
                 'ansible_password': os.getenv("VM_PASSWORD"),
